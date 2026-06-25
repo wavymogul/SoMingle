@@ -1,6 +1,6 @@
-import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { getStore } from "@netlify/blobs";
 import type {
   SurveyPayload,
   SurveyRecord,
@@ -8,225 +8,143 @@ import type {
   WaitlistRecord,
 } from "./types";
 
-// Resolve the database location. Defaults to <project>/data/somingle.db but can
-// be overridden with SOMINGLE_DB_PATH for persistent volumes in production.
-function resolveDbPath(): string {
-  if (process.env.SOMINGLE_DB_PATH) return process.env.SOMINGLE_DB_PATH;
-  const dir = path.join(process.cwd(), "data");
+/**
+ * Storage layer for survey + waitlist data.
+ *
+ * On Netlify (serverless, ephemeral filesystem) we persist to Netlify Blobs.
+ * For local `next dev` we fall back to JSON files under ./data so the app works
+ * with zero configuration. `netlify dev` sets NETLIFY=true and provides the
+ * Blobs context, so it exercises the same path as production.
+ */
+
+const SURVEY_STORE = "somingle-surveys";
+const WAITLIST_STORE = "somingle-waitlist";
+
+function blobsEnabled(): boolean {
+  return (
+    process.env.NETLIFY === "true" || !!process.env.NETLIFY_BLOBS_CONTEXT
+  );
+}
+
+// Numeric, sortable, collision-resistant id (safe integer for low volume).
+function nextId(): number {
+  return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+}
+
+// Zero-padded so lexical key order matches numeric order.
+const surveyKey = (id: number) => String(id).padStart(20, "0");
+
+// Reversible, unique-per-email key for idempotent waitlist upserts.
+const emailKey = (email: string) =>
+  Buffer.from(email.trim().toLowerCase()).toString("base64url");
+
+// ---------------------------------------------------------------- file backend
+
+function dataDir(): string {
+  const dir = process.env.SOMINGLE_DB_PATH
+    ? path.dirname(process.env.SOMINGLE_DB_PATH)
+    : path.join(process.cwd(), "data");
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, "somingle.db");
+  return dir;
 }
 
-// Reuse a single connection across hot reloads in dev.
-const globalForDb = globalThis as unknown as { somingleDb?: Database.Database };
-
-function getDb(): Database.Database {
-  if (globalForDb.somingleDb) return globalForDb.somingleDb;
-
-  const db = new Database(resolveDbPath());
-  db.pragma("journal_mode = WAL");
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS survey_responses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      created_at TEXT NOT NULL,
-      full_name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      phone TEXT,
-      instagram TEXT,
-      age_range TEXT,
-      city TEXT,
-      occupation TEXT,
-      status TEXT,
-      event_frustrations TEXT,
-      going_out_less TEXT,
-      worth_attending TEXT,
-      spent_and_disappointed TEXT,
-      disappointed_why TEXT,
-      experience_interests TEXT,
-      motivation TEXT,
-      missing_in_city TEXT,
-      hoping_to_gain TEXT,
-      meeting_preference TEXT,
-      affordability_importance INTEGER,
-      like_minded_importance INTEGER,
-      hosts_events TEXT,
-      event_type TEXT,
-      creator_challenges TEXT,
-      how_somingle_helps TEXT,
-      dream_event TEXT,
-      wants_early_access TEXT,
-      roles_interested TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS waitlist (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      created_at TEXT NOT NULL,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE
-    );
-  `);
-
-  globalForDb.somingleDb = db;
-  return db;
-}
-
-const arr = (v: string[] | undefined) => JSON.stringify(v ?? []);
-const parseArr = (v: string | null): string[] => {
-  if (!v) return [];
+function readFile<T>(name: string): T[] {
   try {
-    const parsed = JSON.parse(v);
-    return Array.isArray(parsed) ? parsed : [];
+    const p = path.join(dataDir(), name);
+    if (!fs.existsSync(p)) return [];
+    return JSON.parse(fs.readFileSync(p, "utf8")) as T[];
   } catch {
     return [];
   }
-};
+}
 
-export function insertSurvey(p: SurveyPayload): SurveyRecord {
-  const db = getDb();
-  const createdAt = new Date().toISOString();
-  const stmt = db.prepare(`
-    INSERT INTO survey_responses (
-      created_at, full_name, email, phone, instagram, age_range, city,
-      occupation, status, event_frustrations, going_out_less, worth_attending,
-      spent_and_disappointed, disappointed_why, experience_interests, motivation,
-      missing_in_city, hoping_to_gain, meeting_preference, affordability_importance,
-      like_minded_importance, hosts_events, event_type, creator_challenges,
-      how_somingle_helps, dream_event, wants_early_access, roles_interested
-    ) VALUES (
-      @createdAt, @fullName, @email, @phone, @instagram, @ageRange, @city,
-      @occupation, @status, @eventFrustrations, @goingOutLess, @worthAttending,
-      @spentAndDisappointed, @disappointedWhy, @experienceInterests, @motivation,
-      @missingInCity, @hopingToGain, @meetingPreference, @affordabilityImportance,
-      @likeMindedImportance, @hostsEvents, @eventType, @creatorChallenges,
-      @howSomingleHelps, @dreamEvent, @wantsEarlyAccess, @rolesInterested
-    )
-  `);
+function writeFile<T>(name: string, rows: T[]): void {
+  fs.writeFileSync(path.join(dataDir(), name), JSON.stringify(rows, null, 2));
+}
 
-  const info = stmt.run({
-    createdAt,
-    fullName: p.fullName,
+// --------------------------------------------------------------- blobs backend
+
+async function blobAll<T>(storeName: string): Promise<T[]> {
+  const store = getStore(storeName);
+  const { blobs } = await store.list();
+  const items = await Promise.all(
+    blobs.map((b) => store.get(b.key, { type: "json" }))
+  );
+  return items.filter((x): x is T => x != null);
+}
+
+// -------------------------------------------------------------------- surveys
+
+export async function insertSurvey(p: SurveyPayload): Promise<SurveyRecord> {
+  const record: SurveyRecord = {
+    id: nextId(),
+    createdAt: new Date().toISOString(),
+    ...p,
+  };
+
+  if (blobsEnabled()) {
+    await getStore(SURVEY_STORE).setJSON(surveyKey(record.id), record);
+  } else {
+    const rows = readFile<SurveyRecord>("surveys.json");
+    rows.push(record);
+    writeFile("surveys.json", rows);
+  }
+  return record;
+}
+
+export async function getSurveys(): Promise<SurveyRecord[]> {
+  const rows = blobsEnabled()
+    ? await blobAll<SurveyRecord>(SURVEY_STORE)
+    : readFile<SurveyRecord>("surveys.json");
+  return rows.sort((a, b) => b.id - a.id);
+}
+
+// ------------------------------------------------------------------ waitlist
+
+export async function insertWaitlist(
+  p: WaitlistPayload
+): Promise<WaitlistRecord> {
+  if (blobsEnabled()) {
+    const store = getStore(WAITLIST_STORE);
+    const key = emailKey(p.email);
+    const existing = (await store.get(key, {
+      type: "json",
+    })) as WaitlistRecord | null;
+    const record: WaitlistRecord = existing
+      ? { ...existing, name: p.name }
+      : {
+          id: nextId(),
+          createdAt: new Date().toISOString(),
+          name: p.name,
+          email: p.email,
+        };
+    await store.setJSON(key, record);
+    return record;
+  }
+
+  const rows = readFile<WaitlistRecord>("waitlist.json");
+  const idx = rows.findIndex(
+    (r) => r.email.toLowerCase() === p.email.toLowerCase()
+  );
+  if (idx >= 0) {
+    rows[idx] = { ...rows[idx], name: p.name };
+    writeFile("waitlist.json", rows);
+    return rows[idx];
+  }
+  const record: WaitlistRecord = {
+    id: nextId(),
+    createdAt: new Date().toISOString(),
+    name: p.name,
     email: p.email,
-    phone: p.phone ?? null,
-    instagram: p.instagram ?? null,
-    ageRange: p.ageRange,
-    city: p.city,
-    occupation: p.occupation,
-    status: p.status,
-    eventFrustrations: p.eventFrustrations,
-    goingOutLess: p.goingOutLess,
-    worthAttending: p.worthAttending,
-    spentAndDisappointed: p.spentAndDisappointed,
-    disappointedWhy: p.disappointedWhy,
-    experienceInterests: arr(p.experienceInterests),
-    motivation: p.motivation,
-    missingInCity: p.missingInCity,
-    hopingToGain: arr(p.hopingToGain),
-    meetingPreference: p.meetingPreference,
-    affordabilityImportance: p.affordabilityImportance,
-    likeMindedImportance: p.likeMindedImportance,
-    hostsEvents: p.hostsEvents,
-    eventType: p.eventType,
-    creatorChallenges: arr(p.creatorChallenges),
-    howSomingleHelps: p.howSomingleHelps,
-    dreamEvent: p.dreamEvent,
-    wantsEarlyAccess: p.wantsEarlyAccess,
-    rolesInterested: arr(p.rolesInterested),
-  });
-
-  return { id: Number(info.lastInsertRowid), createdAt, ...p };
-}
-
-type SurveyRow = Record<string, string | number | null>;
-
-const s = (v: string | number | null): string => (v == null ? "" : String(v));
-const n = (v: string | number | null): number => {
-  const num = Number(v);
-  return Number.isFinite(num) ? num : 0;
-};
-const asArr = (v: string | number | null): string =>
-  typeof v === "string" ? v : "";
-
-function rowToSurvey(r: SurveyRow): SurveyRecord {
-  return {
-    id: n(r.id),
-    createdAt: s(r.created_at),
-    fullName: s(r.full_name),
-    email: s(r.email),
-    phone: r.phone ? s(r.phone) : undefined,
-    instagram: r.instagram ? s(r.instagram) : undefined,
-    ageRange: s(r.age_range),
-    city: s(r.city),
-    occupation: s(r.occupation),
-    status: s(r.status),
-    eventFrustrations: s(r.event_frustrations),
-    goingOutLess: s(r.going_out_less),
-    worthAttending: s(r.worth_attending),
-    spentAndDisappointed: s(r.spent_and_disappointed),
-    disappointedWhy: s(r.disappointed_why),
-    experienceInterests: parseArr(asArr(r.experience_interests)),
-    motivation: s(r.motivation),
-    missingInCity: s(r.missing_in_city),
-    hopingToGain: parseArr(asArr(r.hoping_to_gain)),
-    meetingPreference: s(r.meeting_preference),
-    affordabilityImportance: n(r.affordability_importance),
-    likeMindedImportance: n(r.like_minded_importance),
-    hostsEvents: s(r.hosts_events),
-    eventType: s(r.event_type),
-    creatorChallenges: parseArr(asArr(r.creator_challenges)),
-    howSomingleHelps: s(r.how_somingle_helps),
-    dreamEvent: s(r.dream_event),
-    wantsEarlyAccess: s(r.wants_early_access),
-    rolesInterested: parseArr(asArr(r.roles_interested)),
   };
+  rows.push(record);
+  writeFile("waitlist.json", rows);
+  return record;
 }
 
-export function getSurveys(): SurveyRecord[] {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT * FROM survey_responses ORDER BY id DESC")
-    .all() as SurveyRow[];
-  return rows.map(rowToSurvey);
-}
-
-export function insertWaitlist(p: WaitlistPayload): WaitlistRecord {
-  const db = getDb();
-  const createdAt = new Date().toISOString();
-  // Upsert by email so re-submitting is idempotent.
-  const stmt = db.prepare(`
-    INSERT INTO waitlist (created_at, name, email)
-    VALUES (@createdAt, @name, @email)
-    ON CONFLICT(email) DO UPDATE SET name = excluded.name
-    RETURNING id, created_at, name, email
-  `);
-  const row = stmt.get({ createdAt, name: p.name, email: p.email }) as {
-    id: number;
-    created_at: string;
-    name: string;
-    email: string;
-  };
-  return {
-    id: row.id,
-    createdAt: row.created_at,
-    name: row.name,
-    email: row.email,
-  };
-}
-
-export function getWaitlist(): WaitlistRecord[] {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT * FROM waitlist ORDER BY id DESC")
-    .all() as Array<{
-    id: number;
-    created_at: string;
-    name: string;
-    email: string;
-  }>;
-  return rows.map((r) => ({
-    id: r.id,
-    createdAt: r.created_at,
-    name: r.name,
-    email: r.email,
-  }));
+export async function getWaitlist(): Promise<WaitlistRecord[]> {
+  const rows = blobsEnabled()
+    ? await blobAll<WaitlistRecord>(WAITLIST_STORE)
+    : readFile<WaitlistRecord>("waitlist.json");
+  return rows.sort((a, b) => b.id - a.id);
 }

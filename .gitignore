@@ -10,12 +10,11 @@
 # production
 /build
 
-# data (local SQLite database)
+# data (local JSON fallback store used by `next dev`)
 /data
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
+
+# netlify
+.netlify
 
 # misc
 .DS_Store

@@ -20,8 +20,8 @@ waitlist capture flow, and an admin dashboard for reviewing responses.
 - **Admin dashboard** (`/admin`) — password-gated, with live stats, insight
   charts (most-wanted experiences, desired outcomes), full response detail
   views, and CSV export.
-- **SQLite persistence** via `better-sqlite3` — submissions are stored in a
-  local database, no external service required.
+- **Serverless persistence** via Netlify Blobs (with a local JSON-file fallback
+  for `next dev`) — submissions are stored with no external database to manage.
 - Dark-mode-by-default premium UI: glassmorphism, brand gradients (purple,
   blue, pink, gold), Framer Motion animations, smooth scrolling.
 - SEO-ready: metadata, Open Graph, `robots.txt`, and `sitemap.xml`.
@@ -34,7 +34,8 @@ waitlist capture flow, and an admin dashboard for reviewing responses.
 | Styling    | Tailwind CSS                            |
 | Animation  | Framer Motion                           |
 | Icons      | lucide-react                            |
-| Database   | SQLite (`better-sqlite3`)               |
+| Storage    | Netlify Blobs (JSON-file fallback)      |
+| Hosting    | Netlify (`@netlify/plugin-nextjs`)      |
 
 ## 🚀 Getting Started
 
@@ -55,13 +56,29 @@ Open [http://localhost:3000](http://localhost:3000).
 | Variable               | Description                                          | Default               |
 | ---------------------- | ---------------------------------------------------- | --------------------- |
 | `ADMIN_PASSWORD`       | Password for the `/admin` dashboard.                 | `somingle-admin`      |
-| `SOMINGLE_DB_PATH`     | Absolute path to the SQLite file (use a volume).     | `./data/somingle.db`  |
 | `NEXT_PUBLIC_SITE_URL` | Canonical site URL for SEO metadata & sitemap.       | `https://somingle.io` |
+| `SOMINGLE_DB_PATH`     | (Local dev only) location for the JSON fallback store.| `./data`             |
 
-> **Heads up for serverless deploys:** the default SQLite file lives on the
-> local filesystem. On platforms with ephemeral filesystems (e.g. Vercel),
-> point `SOMINGLE_DB_PATH` at a persistent volume, or swap `src/lib/db.ts` for
-> a hosted database (Postgres, Turso, Supabase).
+> **Storage:** On Netlify, survey and waitlist submissions are written to
+> **Netlify Blobs** automatically — no database or credentials to configure.
+> For local `next dev`, data falls back to JSON files under `./data`. Running
+> `netlify dev` locally exercises the same Blobs path as production.
+
+## ☁️ Deploy to Netlify
+
+This repo is preconfigured for Netlify via `netlify.toml` and
+`@netlify/plugin-nextjs`. To deploy from the dashboard:
+
+1. Push this branch to GitHub (already done).
+2. Go to [app.netlify.com](https://app.netlify.com) → **Add new site → Import an
+   existing project** → connect GitHub → pick this repository.
+3. Netlify auto-detects the settings from `netlify.toml` (build command
+   `npm run build`, Next.js runtime plugin). Leave them as-is.
+4. Under **Environment variables**, add `ADMIN_PASSWORD` (and optionally
+   `NEXT_PUBLIC_SITE_URL`).
+5. Click **Deploy**. Every push to the production branch redeploys automatically.
+
+Netlify Blobs is enabled out of the box for Next.js sites — no extra setup.
 
 ## 📡 API
 

@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const record = insertWaitlist({ name, email });
+    const record = await insertWaitlist({ name, email });
     return NextResponse.json({ ok: true, id: record.id }, { status: 201 });
   } catch (err) {
     console.error("Failed to store waitlist signup:", err);

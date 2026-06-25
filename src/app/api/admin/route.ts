@@ -18,8 +18,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const surveys = getSurveys();
-    const waitlist = getWaitlist();
+    const surveys = await getSurveys();
+    const waitlist = await getWaitlist();
     return NextResponse.json({
       ok: true,
       stats: {

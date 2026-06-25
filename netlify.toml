@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Official Next.js runtime: handles SSR, API routes, image optimization,
+# and provides the Netlify Blobs context to server functions automatically.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
