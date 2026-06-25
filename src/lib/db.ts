@@ -92,11 +92,60 @@ export async function insertSurvey(p: SurveyPayload): Promise<SurveyRecord> {
   return record;
 }
 
+// Backfill any missing fields so records written by older versions of the app
+// (before new survey questions existed) are always complete. Without this,
+// consumers that iterate array fields (e.g. the admin analytics) would crash on
+// `undefined`.
+function normalizeSurvey(r: Partial<SurveyRecord>): SurveyRecord {
+  const s = (v: unknown) => (typeof v === "string" ? v : "");
+  const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
+  const num = (v: unknown, fallback: number) =>
+    typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  return {
+    id: num(r.id, 0),
+    createdAt: s(r.createdAt) || new Date(0).toISOString(),
+    fullName: s(r.fullName),
+    email: s(r.email),
+    phone: r.phone,
+    instagram: r.instagram,
+    ageRange: s(r.ageRange),
+    city: s(r.city),
+    occupation: s(r.occupation),
+    status: s(r.status),
+    eventFrustrations: s(r.eventFrustrations),
+    goingOutLess: s(r.goingOutLess),
+    worthAttending: s(r.worthAttending),
+    spentAndDisappointed: s(r.spentAndDisappointed),
+    disappointedWhy: s(r.disappointedWhy),
+    experienceInterests: arr(r.experienceInterests),
+    motivation: s(r.motivation),
+    missingInCity: s(r.missingInCity),
+    vibeWords: arr(r.vibeWords),
+    hopingToGain: arr(r.hopingToGain),
+    meetingPreference: s(r.meetingPreference),
+    affordabilityImportance: num(r.affordabilityImportance, 5),
+    likeMindedImportance: num(r.likeMindedImportance, 5),
+    musicGenres: arr(r.musicGenres),
+    preferredEventMusic: s(r.preferredEventMusic),
+    musicImportance: num(r.musicImportance, 5),
+    attendForDj: s(r.attendForDj),
+    discoverDjs: s(r.discoverDjs),
+    hostsEvents: s(r.hostsEvents),
+    eventType: s(r.eventType),
+    creatorChallenges: arr(r.creatorChallenges),
+    howSomingleHelps: s(r.howSomingleHelps),
+    dreamEvent: s(r.dreamEvent),
+    wantsEarlyAccess: s(r.wantsEarlyAccess),
+    rolesInterested: arr(r.rolesInterested),
+    belongingFeeling: s(r.belongingFeeling),
+  };
+}
+
 export async function getSurveys(): Promise<SurveyRecord[]> {
   const rows = blobsEnabled()
-    ? await blobAll<SurveyRecord>(SURVEY_STORE)
-    : readFile<SurveyRecord>("surveys.json");
-  return rows.sort((a, b) => b.id - a.id);
+    ? await blobAll<Partial<SurveyRecord>>(SURVEY_STORE)
+    : readFile<Partial<SurveyRecord>>("surveys.json");
+  return rows.map(normalizeSurvey).sort((a, b) => b.id - a.id);
 }
 
 // ------------------------------------------------------------------ waitlist
