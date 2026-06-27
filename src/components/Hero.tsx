@@ -39,7 +39,7 @@ export function Hero() {
           className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium text-white/80"
         >
           <Sparkles size={14} className="text-brand-gold" />
-          The future of social experiences — in the making
+          Come as you are. Let&apos;s be real again.
         </motion.div>
 
         <motion.h1
