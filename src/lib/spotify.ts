@@ -12,9 +12,17 @@ export function spotifyConfigured(): boolean {
   return Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET);
 }
 
-// The redirect URI must exactly match one registered in the Spotify dashboard.
+// The redirect URI must exactly match one registered in the Spotify dashboard
+// AND be identical between the authorize and token-exchange steps. Prefer an
+// explicit value, then the canonical site URL, then the request origin — so it
+// stays deterministic on hosts where the request origin may be an internal host.
 export function getRedirectUri(origin: string): string {
-  return process.env.SPOTIFY_REDIRECT_URI || `${origin}/api/spotify/callback`;
+  const base =
+    process.env.SPOTIFY_REDIRECT_URI ||
+    (process.env.NEXT_PUBLIC_SITE_URL
+      ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/api/spotify/callback`
+      : `${origin}/api/spotify/callback`);
+  return base;
 }
 
 export function buildAuthorizeUrl(state: string, redirectUri: string): string {
