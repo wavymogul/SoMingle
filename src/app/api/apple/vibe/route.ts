@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildGenreProfile } from "@/lib/vibe";
 import { encodeProfile, VIBE_COOKIE } from "@/lib/spotify";
 import { strArr } from "@/lib/validate";
+import { checkLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,12 @@ export const dynamic = "force-dynamic";
 // Receives the genres/artists MusicKit fetched on the client and stores a
 // vibe profile in the same cookie the Spotify flow uses.
 export async function POST(req: NextRequest) {
+  if (!checkLimit(req, "appleVibe")) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please try again shortly." },
+      { status: 429 }
+    );
+  }
   let body: unknown;
   try {
     body = await req.json();

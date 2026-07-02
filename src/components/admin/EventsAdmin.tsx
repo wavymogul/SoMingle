@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, Pencil, Trash2, TrendingUp, X } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, TrendingUp, Users, X } from "lucide-react";
 import { EVENT_CATEGORIES } from "@/lib/events-data";
-import type { EventRecord } from "@/lib/types";
+import type { EventRecord, RsvpRecord } from "@/lib/types";
 
 const emptyForm = {
   title: "",
@@ -37,19 +37,34 @@ export function EventsAdmin({ user, pass }: { user: string; pass: string }) {
     [user, pass]
   );
 
+  const [rsvpsByEvent, setRsvpsByEvent] = useState<Record<string, RsvpRecord[]>>(
+    {}
+  );
+
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/events");
-      const data = await res.json();
+      const [evRes, rsvpRes] = await Promise.all([
+        fetch("/api/events"),
+        fetch("/api/rsvp?admin=1", { headers: authHeaders() }),
+      ]);
+      const data = await evRes.json();
       if (data.ok) {
         setEvents(data.events as EventRecord[]);
         setIsSample(Boolean(data.sample));
       }
+      const rsvpData = await rsvpRes.json();
+      if (rsvpData.ok) {
+        const grouped: Record<string, RsvpRecord[]> = {};
+        for (const r of rsvpData.rsvps as RsvpRecord[]) {
+          (grouped[String(r.eventId)] ??= []).push(r);
+        }
+        setRsvpsByEvent(grouped);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authHeaders]);
 
   useEffect(() => {
     reload();
@@ -273,51 +288,90 @@ export function EventsAdmin({ user, pass }: { user: string; pass: string }) {
           </div>
         ) : (
           <div className="space-y-3">
-            {events.map((ev) => (
-              <div
-                key={ev.id}
-                className="flex items-center gap-4 rounded-2xl glass p-3"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={ev.imageUrl}
-                  alt=""
-                  loading="lazy"
-                  className="h-14 w-20 shrink-0 rounded-xl object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-medium">{ev.title}</p>
-                    {ev.trending && (
-                      <TrendingUp size={14} className="shrink-0 text-brand-gold" />
+            {events.map((ev) => {
+              const rsvps = rsvpsByEvent[String(ev.id)] ?? [];
+              return (
+                <div key={ev.id} className="rounded-2xl glass p-3">
+                  <div className="flex items-center gap-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={ev.imageUrl}
+                      alt=""
+                      loading="lazy"
+                      className="h-14 w-20 shrink-0 rounded-xl object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium">{ev.title}</p>
+                        {ev.trending && (
+                          <TrendingUp
+                            size={14}
+                            className="shrink-0 text-brand-gold"
+                          />
+                        )}
+                      </div>
+                      <p className="truncate text-xs text-white/50">
+                        {ev.category} · {ev.city || "—"} · {ev.date || "TBA"}
+                      </p>
+                    </div>
+                    {!isSample && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => startEdit(ev)}
+                          className={`rounded-xl p-2 transition-colors hover:bg-white/10 hover:text-white ${
+                            editingId === ev.id
+                              ? "text-brand-gold"
+                              : "text-white/50"
+                          }`}
+                          aria-label="Edit event"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => remove(ev.id)}
+                          className="rounded-xl p-2 text-white/50 transition-colors hover:bg-brand-pink/15 hover:text-brand-pink"
+                          aria-label="Delete event"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <p className="truncate text-xs text-white/50">
-                    {ev.category} · {ev.city || "—"} · {ev.date || "TBA"}
-                  </p>
+
+                  {rsvps.length > 0 && (
+                    <details className="mt-2 rounded-xl bg-white/[0.03] px-3 py-2">
+                      <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-white/70">
+                        <Users size={13} className="text-brand-pink" />
+                        {rsvps.length} interested
+                        <span className="text-white/40">
+                          ·{" "}
+                          {rsvps.filter((r) => r.vibe).length} with vibe
+                          profiles
+                        </span>
+                      </summary>
+                      <ul className="mt-2 space-y-1.5">
+                        {rsvps.map((r) => (
+                          <li
+                            key={r.id}
+                            className="flex flex-wrap items-baseline gap-x-2 text-xs"
+                          >
+                            <span className="font-medium text-white/85">
+                              {r.name}
+                            </span>
+                            <span className="text-white/50">{r.email}</span>
+                            {r.vibe && r.vibe.topGenres.length > 0 && (
+                              <span className="text-brand-pink/80">
+                                {r.vibe.topGenres.slice(0, 3).join(", ")}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </div>
-                {!isSample && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      onClick={() => startEdit(ev)}
-                      className={`rounded-xl p-2 transition-colors hover:bg-white/10 hover:text-white ${
-                        editingId === ev.id ? "text-brand-gold" : "text-white/50"
-                      }`}
-                      aria-label="Edit event"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => remove(ev.id)}
-                      className="rounded-xl p-2 text-white/50 transition-colors hover:bg-brand-pink/15 hover:text-brand-pink"
-                      aria-label="Delete event"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

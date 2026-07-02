@@ -8,6 +8,8 @@ import type {
   WaitlistRecord,
   EventPayload,
   EventRecord,
+  RsvpPayload,
+  RsvpRecord,
 } from "./types";
 
 /**
@@ -22,6 +24,7 @@ import type {
 const SURVEY_STORE = "somingle-surveys";
 const WAITLIST_STORE = "somingle-waitlist";
 const EVENT_STORE = "somingle-events";
+const RSVP_STORE = "somingle-rsvps";
 
 function blobsEnabled(): boolean {
   return (
@@ -264,4 +267,56 @@ export async function deleteEvent(id: number): Promise<void> {
     const rows = readFile<EventRecord>("events.json").filter((r) => r.id !== id);
     writeFile("events.json", rows);
   }
+}
+
+// --------------------------------------------------------------------- rsvps
+
+// Idempotent per (event, email): re-RSVPing updates the name and refreshes the
+// vibe snapshot instead of duplicating.
+export async function upsertRsvp(p: RsvpPayload): Promise<RsvpRecord> {
+  const email = p.email.toLowerCase();
+
+  if (blobsEnabled()) {
+    const store = getStore(RSVP_STORE);
+    const key = `${surveyKey(p.eventId)}-${emailKey(email)}`;
+    const existing = (await store.get(key, {
+      type: "json",
+    })) as RsvpRecord | null;
+    const record: RsvpRecord = existing
+      ? { ...existing, name: p.name, vibe: p.vibe ?? existing.vibe }
+      : {
+          id: nextId(),
+          createdAt: new Date().toISOString(),
+          ...p,
+          email,
+        };
+    await store.setJSON(key, record);
+    return record;
+  }
+
+  const rows = readFile<RsvpRecord>("rsvps.json");
+  const idx = rows.findIndex(
+    (r) => r.eventId === p.eventId && r.email.toLowerCase() === email
+  );
+  if (idx >= 0) {
+    rows[idx] = { ...rows[idx], name: p.name, vibe: p.vibe ?? rows[idx].vibe };
+    writeFile("rsvps.json", rows);
+    return rows[idx];
+  }
+  const record: RsvpRecord = {
+    id: nextId(),
+    createdAt: new Date().toISOString(),
+    ...p,
+    email,
+  };
+  rows.push(record);
+  writeFile("rsvps.json", rows);
+  return record;
+}
+
+export async function getRsvps(): Promise<RsvpRecord[]> {
+  const rows = blobsEnabled()
+    ? await blobAll<RsvpRecord>(RSVP_STORE)
+    : readFile<RsvpRecord>("rsvps.json");
+  return rows.sort((a, b) => b.id - a.id);
 }

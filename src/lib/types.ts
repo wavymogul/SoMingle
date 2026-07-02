@@ -77,6 +77,29 @@ export type EventRecord = EventPayload & {
   createdAt: string;
 };
 
+// Structural copy of VibeProfile (kept here to avoid a types<->vibe import cycle).
+export type VibeSnapshot = {
+  connectedAt: string;
+  source: string;
+  topGenres: string[];
+  topArtists: string[];
+  energy: number;
+  danceability: number;
+  valence: number;
+};
+
+export type RsvpPayload = {
+  eventId: number;
+  name: string;
+  email: string;
+  vibe?: VibeSnapshot;
+};
+
+export type RsvpRecord = RsvpPayload & {
+  id: number;
+  createdAt: string;
+};
+
 export type WaitlistPayload = {
   name: string;
   email: string;

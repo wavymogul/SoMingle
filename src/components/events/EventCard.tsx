@@ -1,4 +1,4 @@
-import { CalendarDays, MapPin, TrendingUp, Ticket } from "lucide-react";
+import { CalendarDays, MapPin, TrendingUp, Ticket, Users } from "lucide-react";
 import type { EventRecord } from "@/lib/types";
 
 function formatDate(iso: string): string {
@@ -17,9 +17,15 @@ const priceLabel = (n: number) => (n > 0 ? `From $${n}` : "Free");
 export function EventCard({
   event,
   matchScore,
+  going,
+  vibeMatches,
+  onRsvp,
 }: {
   event: EventRecord;
   matchScore?: number;
+  going?: number;
+  vibeMatches?: number;
+  onRsvp?: () => void;
 }) {
   return (
     <article className="group overflow-hidden rounded-3xl glass transition-all duration-300 hover:-translate-y-1.5 hover:bg-white/[0.07]">
@@ -73,6 +79,31 @@ export function EventCard({
           <p className="mt-3 line-clamp-2 text-sm text-white/55">
             {event.description}
           </p>
+        )}
+        {onRsvp && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-white/[0.04] px-3.5 py-2.5">
+            <span className="flex items-center gap-1.5 text-xs text-white/60">
+              <Users size={13} className="shrink-0" />
+              {going ? (
+                <>
+                  {going} interested
+                  {vibeMatches ? (
+                    <span className="font-semibold text-brand-pink">
+                      · {vibeMatches} share your vibe
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                "Be the first in the room"
+              )}
+            </span>
+            <button
+              onClick={onRsvp}
+              className="shrink-0 text-xs font-semibold text-brand-pink hover:underline"
+            >
+              I&apos;m in
+            </button>
+          </div>
         )}
         <div className="mt-5 flex items-center justify-between gap-3">
           <span className="text-xs text-white/40">

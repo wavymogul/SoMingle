@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertSurvey } from "@/lib/db";
 import { isEmail, str, strArr, clampScale } from "@/lib/validate";
+import { checkLimit } from "@/lib/ratelimit";
 import type { SurveyPayload } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  if (!checkLimit(req, "survey")) {
+    return NextResponse.json(
+      { error: "Too many submissions. Please try again in a few minutes." },
+      { status: 429 }
+    );
+  }
   let body: unknown;
   try {
     body = await req.json();

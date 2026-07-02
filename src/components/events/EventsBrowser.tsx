@@ -34,6 +34,26 @@ export function EventsBrowser() {
   const [vibeSort, setVibeSort] = useState(true);
   const [statusMsg, setStatusMsg] = useState("");
 
+  // RSVP state
+  const [rsvpSummary, setRsvpSummary] = useState<
+    Record<string, { going: number; matches: number }>
+  >({});
+  const [rsvpTarget, setRsvpTarget] = useState<EventRecord | null>(null);
+
+  const loadRsvpSummary = useCallback(async () => {
+    try {
+      const res = await fetch("/api/rsvp");
+      const data = await res.json();
+      if (data.ok) setRsvpSummary(data.summary ?? {});
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRsvpSummary();
+  }, [loadRsvpSummary]);
+
   const loadVibe = useCallback(async () => {
     try {
       const [meRes, appleRes] = await Promise.all([
@@ -366,12 +386,147 @@ export function EventsBrowser() {
             {city !== "All" ? ` in ${city}` : ""}
           </p>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {displayList.map(({ event, score }) => (
-              <EventCard key={event.id} event={event} matchScore={score} />
-            ))}
+            {displayList.map(({ event, score }) => {
+              const s = rsvpSummary[String(event.id)];
+              return (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  matchScore={score}
+                  going={s?.going ?? 0}
+                  vibeMatches={profile ? s?.matches ?? 0 : 0}
+                  onRsvp={() => setRsvpTarget(event)}
+                />
+              );
+            })}
           </div>
         </>
       )}
+
+      {rsvpTarget && (
+        <RsvpModal
+          event={rsvpTarget}
+          hasVibe={Boolean(profile)}
+          onClose={() => setRsvpTarget(null)}
+          onDone={loadRsvpSummary}
+        />
+      )}
+    </div>
+  );
+}
+
+function RsvpModal({
+  event,
+  hasVibe,
+  onClose,
+  onDone,
+}: {
+  event: EventRecord;
+  hasVibe: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/rsvp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: event.id, name, email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      setDone(true);
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="gradient-border w-full max-w-md rounded-3xl glass-strong p-7"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-1 flex items-start justify-between gap-3">
+          <h3 className="font-display text-xl font-bold">
+            {done ? "You're in! 🎉" : "Count me in"}
+          </h3>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-white/50 hover:text-white"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mb-5 text-sm text-white/55">{event.title}</p>
+
+        {done ? (
+          <div className="space-y-4">
+            <p className="text-sm text-white/70">
+              {hasVibe
+                ? "Your vibe is part of this room now. When people who match your taste join, they'll see it — and that's how the right intros happen."
+                : "You're on the list. Connect your music above and we'll match you with people going who share your taste."}
+            </p>
+            <button
+              onClick={onClose}
+              className="w-full rounded-2xl bg-brand-gradient py-3 text-sm font-semibold"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              autoFocus
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-purple/60 focus:outline-none focus:ring-2 focus:ring-brand-purple/25"
+            />
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-purple/60 focus:outline-none focus:ring-2 focus:ring-brand-purple/25"
+            />
+            {error && <p className="text-sm text-brand-pink">{error}</p>}
+            <button
+              type="submit"
+              disabled={busy}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-gradient py-3 text-sm font-semibold disabled:opacity-60"
+            >
+              {busy ? <Loader2 size={16} className="animate-spin" /> : "I'm in"}
+            </button>
+            <p className="text-center text-xs text-white/40">
+              {hasVibe
+                ? "Your vibe profile will be used to match you with the room."
+                : "Only used for this event — never shared."}
+            </p>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
