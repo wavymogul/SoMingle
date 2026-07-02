@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { VIBE_COOKIE } from "@/lib/spotify";
+import { VIBE_COOKIE } from "@/lib/vibe-cookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

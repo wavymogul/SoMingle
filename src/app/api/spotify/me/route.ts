@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spotifyConfigured, decodeProfile, VIBE_COOKIE } from "@/lib/spotify";
+import { spotifyConfigured } from "@/lib/spotify";
+import { decodeProfile, VIBE_COOKIE } from "@/lib/vibe-cookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

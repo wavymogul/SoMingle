@@ -5,7 +5,6 @@ const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE = "https://api.spotify.com/v1";
 const SCOPES = "user-top-read";
 
-export const VIBE_COOKIE = "somingle_vibe";
 export const STATE_COOKIE = "somingle_spotify_state";
 
 export function spotifyConfigured(): boolean {
@@ -82,27 +81,20 @@ export async function fetchVibeProfile(token: string): Promise<VibeProfile> {
   let audioFeatures: { energy: number; danceability: number; valence: number }[] = [];
   const ids = tracksRes.items.map((t) => t.id).filter(Boolean).slice(0, 100);
   if (ids.length > 0) {
-    const feat = await api<{
-      audio_features: ({ energy: number; danceability: number; valence: number } | null)[];
-    }>(token, `/audio-features?ids=${ids.join(",")}`);
-    audioFeatures = feat.audio_features.filter(
-      (f): f is { energy: number; danceability: number; valence: number } => f != null
-    );
+    // Spotify restricts /audio-features for apps created after late 2024. If
+    // it's unavailable, fall back to a genre-led profile (neutral energy)
+    // rather than failing the whole connect.
+    try {
+      const feat = await api<{
+        audio_features: ({ energy: number; danceability: number; valence: number } | null)[];
+      }>(token, `/audio-features?ids=${ids.join(",")}`);
+      audioFeatures = feat.audio_features.filter(
+        (f): f is { energy: number; danceability: number; valence: number } => f != null
+      );
+    } catch (err) {
+      console.warn("Spotify audio-features unavailable; using genre-only profile:", err);
+    }
   }
 
   return buildVibeProfile({ artists: artistsRes.items, audioFeatures });
-}
-
-// Cookie (de)serialization — base64 JSON keeps the profile compact + opaque.
-export function encodeProfile(p: VibeProfile): string {
-  return Buffer.from(JSON.stringify(p)).toString("base64url");
-}
-
-export function decodeProfile(raw: string | undefined): VibeProfile | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as VibeProfile;
-  } catch {
-    return null;
-  }
 }
