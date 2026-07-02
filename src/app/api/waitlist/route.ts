@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertWaitlist } from "@/lib/db";
 import { isEmail } from "@/lib/validate";
+import { checkLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  if (!checkLimit(req, "waitlist")) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please try again in a few minutes." },
+      { status: 429 }
+    );
+  }
   let body: unknown;
   try {
     body = await req.json();

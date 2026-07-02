@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSurveys, getWaitlist } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
+import { checkLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  // Generous for real use, but slows down credential brute-forcing.
+  if (!checkLimit(req, "admin")) {
+    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+  }
   if (!isAdmin(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
