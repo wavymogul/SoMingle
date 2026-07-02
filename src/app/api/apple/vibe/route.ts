@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildGenreProfile } from "@/lib/vibe";
-import { encodeProfile, VIBE_COOKIE } from "@/lib/spotify";
+import {
+  encodeProfile,
+  VIBE_COOKIE,
+  VIBE_COOKIE_OPTIONS,
+} from "@/lib/vibe-cookie";
 import { strArr } from "@/lib/validate";
 import { checkLimit } from "@/lib/ratelimit";
 
@@ -35,12 +39,6 @@ export async function POST(req: NextRequest) {
 
   const profile = buildGenreProfile({ genres, artists, source: "apple" });
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(VIBE_COOKIE, encodeProfile(profile), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  res.cookies.set(VIBE_COOKIE, encodeProfile(profile), VIBE_COOKIE_OPTIONS);
   return res;
 }

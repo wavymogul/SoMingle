@@ -68,6 +68,23 @@ function writeFile<T>(name: string, rows: T[]): void {
   fs.writeFileSync(path.join(dataDir(), name), JSON.stringify(rows, null, 2));
 }
 
+// ------------------------------------------------------------ hot-path cache
+
+// Events and RSVPs are read on every /events page view, and the blob backend
+// pays a list + per-key fetch each time. A short per-instance TTL cache keeps
+// that off the hot path; writes bust it immediately (other instances converge
+// within the TTL, which is fine for counts).
+const READ_TTL_MS = 30_000;
+const readCache = new Map<string, { at: number; data: unknown }>();
+
+function cacheGet<T>(key: string): T | null {
+  const hit = readCache.get(key);
+  return hit && Date.now() - hit.at < READ_TTL_MS ? (hit.data as T) : null;
+}
+const cacheSet = (key: string, data: unknown) =>
+  readCache.set(key, { at: Date.now(), data });
+const cacheBust = (key: string) => readCache.delete(key);
+
 // --------------------------------------------------------------- blobs backend
 
 async function blobAll<T>(storeName: string): Promise<T[]> {
@@ -219,6 +236,7 @@ export async function insertEvent(p: EventPayload): Promise<EventRecord> {
     rows.push(record);
     writeFile("events.json", rows);
   }
+  cacheBust("events");
   return record;
 }
 
@@ -231,10 +249,14 @@ function sortEvents(rows: EventRecord[]): EventRecord[] {
 }
 
 export async function getStoredEvents(): Promise<EventRecord[]> {
+  const hit = cacheGet<EventRecord[]>("events");
+  if (hit) return hit;
   const rows = blobsEnabled()
     ? await blobAll<EventRecord>(EVENT_STORE)
     : readFile<EventRecord>("events.json");
-  return sortEvents(rows);
+  const sorted = sortEvents(rows);
+  cacheSet("events", sorted);
+  return sorted;
 }
 
 export async function updateEvent(
@@ -250,6 +272,7 @@ export async function updateEvent(
     if (!existing) return null;
     const updated: EventRecord = { ...existing, ...payload, id, createdAt: existing.createdAt };
     await store.setJSON(key, updated);
+    cacheBust("events");
     return updated;
   }
   const rows = readFile<EventRecord>("events.json");
@@ -257,6 +280,7 @@ export async function updateEvent(
   if (idx < 0) return null;
   rows[idx] = { ...rows[idx], ...payload, id, createdAt: rows[idx].createdAt };
   writeFile("events.json", rows);
+  cacheBust("events");
   return rows[idx];
 }
 
@@ -267,6 +291,7 @@ export async function deleteEvent(id: number): Promise<void> {
     const rows = readFile<EventRecord>("events.json").filter((r) => r.id !== id);
     writeFile("events.json", rows);
   }
+  cacheBust("events");
 }
 
 // --------------------------------------------------------------------- rsvps
@@ -275,48 +300,56 @@ export async function deleteEvent(id: number): Promise<void> {
 // vibe snapshot instead of duplicating.
 export async function upsertRsvp(p: RsvpPayload): Promise<RsvpRecord> {
   const email = p.email.toLowerCase();
+  try {
+    if (blobsEnabled()) {
+      const store = getStore(RSVP_STORE);
+      const key = `${surveyKey(p.eventId)}-${emailKey(email)}`;
+      const existing = (await store.get(key, {
+        type: "json",
+      })) as RsvpRecord | null;
+      const record: RsvpRecord = existing
+        ? { ...existing, name: p.name, vibe: p.vibe ?? existing.vibe }
+        : {
+            id: nextId(),
+            createdAt: new Date().toISOString(),
+            ...p,
+            email,
+          };
+      await store.setJSON(key, record);
+      return record;
+    }
 
-  if (blobsEnabled()) {
-    const store = getStore(RSVP_STORE);
-    const key = `${surveyKey(p.eventId)}-${emailKey(email)}`;
-    const existing = (await store.get(key, {
-      type: "json",
-    })) as RsvpRecord | null;
-    const record: RsvpRecord = existing
-      ? { ...existing, name: p.name, vibe: p.vibe ?? existing.vibe }
-      : {
-          id: nextId(),
-          createdAt: new Date().toISOString(),
-          ...p,
-          email,
-        };
-    await store.setJSON(key, record);
-    return record;
-  }
-
-  const rows = readFile<RsvpRecord>("rsvps.json");
-  const idx = rows.findIndex(
-    (r) => r.eventId === p.eventId && r.email.toLowerCase() === email
-  );
-  if (idx >= 0) {
-    rows[idx] = { ...rows[idx], name: p.name, vibe: p.vibe ?? rows[idx].vibe };
+    const rows = readFile<RsvpRecord>("rsvps.json");
+    const idx = rows.findIndex(
+      (r) => r.eventId === p.eventId && r.email.toLowerCase() === email
+    );
+    if (idx >= 0) {
+      rows[idx] = { ...rows[idx], name: p.name, vibe: p.vibe ?? rows[idx].vibe };
+      writeFile("rsvps.json", rows);
+      return rows[idx];
+    }
+    const record: RsvpRecord = {
+      id: nextId(),
+      createdAt: new Date().toISOString(),
+      ...p,
+      email,
+    };
+    rows.push(record);
     writeFile("rsvps.json", rows);
-    return rows[idx];
+    return record;
+  } finally {
+    // Bust after the write so a concurrent read can't re-cache stale data.
+    cacheBust("rsvps");
   }
-  const record: RsvpRecord = {
-    id: nextId(),
-    createdAt: new Date().toISOString(),
-    ...p,
-    email,
-  };
-  rows.push(record);
-  writeFile("rsvps.json", rows);
-  return record;
 }
 
 export async function getRsvps(): Promise<RsvpRecord[]> {
+  const hit = cacheGet<RsvpRecord[]>("rsvps");
+  if (hit) return hit;
   const rows = blobsEnabled()
     ? await blobAll<RsvpRecord>(RSVP_STORE)
     : readFile<RsvpRecord>("rsvps.json");
-  return rows.sort((a, b) => b.id - a.id);
+  const sorted = rows.sort((a, b) => b.id - a.id);
+  cacheSet("rsvps", sorted);
+  return sorted;
 }

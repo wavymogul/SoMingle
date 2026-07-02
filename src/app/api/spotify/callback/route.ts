@@ -3,10 +3,13 @@ import {
   getRedirectUri,
   exchangeCodeForToken,
   fetchVibeProfile,
-  encodeProfile,
-  VIBE_COOKIE,
   STATE_COOKIE,
 } from "@/lib/spotify";
+import {
+  encodeProfile,
+  VIBE_COOKIE,
+  VIBE_COOKIE_OPTIONS,
+} from "@/lib/vibe-cookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,13 +35,7 @@ export async function GET(req: NextRequest) {
     const profile = await fetchVibeProfile(token);
 
     const res = NextResponse.redirect(`${origin}/events?spotify=connected`);
-    res.cookies.set(VIBE_COOKIE, encodeProfile(profile), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-    });
+    res.cookies.set(VIBE_COOKIE, encodeProfile(profile), VIBE_COOKIE_OPTIONS);
     res.cookies.delete(STATE_COOKIE);
     return res;
   } catch (err) {

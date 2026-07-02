@@ -15,7 +15,18 @@ export function appleConfigured(): boolean {
 const b64url = (input: Buffer | string) =>
   Buffer.from(input).toString("base64url");
 
+// The token is valid for months; cache it per instance instead of re-signing
+// on every request (this endpoint is hit on each events-page load).
+let cached: { token: string; exp: number } | null = null;
+
 export function buildDeveloperToken(): string {
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (cached && cached.exp - nowSec > 60 * 60) return cached.token;
+  const token = signDeveloperToken(nowSec);
+  return token;
+}
+
+function signDeveloperToken(now: number): string {
   const teamId = process.env.APPLE_TEAM_ID as string;
   const keyId = process.env.APPLE_KEY_ID as string;
   // Allow the PEM to be stored with literal "\n" in the env var.
@@ -24,7 +35,6 @@ export function buildDeveloperToken(): string {
     "\n"
   );
 
-  const now = Math.floor(Date.now() / 1000);
   const header = { alg: "ES256", kid: keyId, typ: "JWT" };
   const payload = {
     iss: teamId,
@@ -42,5 +52,7 @@ export function buildDeveloperToken(): string {
     dsaEncoding: "ieee-p1363",
   });
 
-  return `${signingInput}.${b64url(signature)}`;
+  const token = `${signingInput}.${b64url(signature)}`;
+  cached = { token, exp: payload.exp };
+  return token;
 }

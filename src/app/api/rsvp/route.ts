@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertRsvp, getRsvps } from "@/lib/db";
-import { decodeProfile, VIBE_COOKIE } from "@/lib/spotify";
+import { decodeProfile, VIBE_COOKIE } from "@/lib/vibe-cookie";
 import { profileSimilarity, MATCH_THRESHOLD } from "@/lib/compat";
 import { isAdmin } from "@/lib/auth";
 import { isEmail, str } from "@/lib/validate";
