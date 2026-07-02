@@ -4,7 +4,7 @@ import type { EventRecord } from "./types";
 // signals). Small enough to live in a cookie.
 export type VibeProfile = {
   connectedAt: string;
-  source: "spotify";
+  source: "spotify" | "apple";
   topGenres: string[];
   topArtists: string[];
   energy: number; // 0-1 average audio features
@@ -116,5 +116,36 @@ export function buildVibeProfile(input: {
     energy: avg("energy"),
     danceability: avg("danceability"),
     valence: avg("valence"),
+  };
+}
+
+/**
+ * Build a VibeProfile from genre names + artist names only (Apple Music doesn't
+ * expose audio features). Audio-feature fields default to neutral, so matching
+ * leans on genre overlap.
+ */
+export function buildGenreProfile(input: {
+  genres: string[];
+  artists: string[];
+  source: "spotify" | "apple";
+}): VibeProfile {
+  const counts = new Map<string, number>();
+  for (const g of input.genres) {
+    const t = g?.trim();
+    if (t) counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  const topGenres = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([g]) => g);
+
+  return {
+    connectedAt: new Date().toISOString(),
+    source: input.source,
+    topGenres,
+    topArtists: [...new Set(input.artists.filter(Boolean))].slice(0, 5),
+    energy: 0.5,
+    danceability: 0.5,
+    valence: 0.5,
   };
 }

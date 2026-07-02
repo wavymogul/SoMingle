@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertWaitlist } from "@/lib/db";
+import { isEmail } from "@/lib/validate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const isEmail = (v: unknown) =>
-  typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 export async function POST(req: NextRequest) {
   let body: unknown;

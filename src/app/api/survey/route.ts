@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertSurvey } from "@/lib/db";
+import { isEmail, str, strArr, clampScale } from "@/lib/validate";
 import type { SurveyPayload } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const isEmail = (v: unknown) =>
-  typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-
-const clampScale = (v: unknown): number => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 5;
-  return Math.min(10, Math.max(1, Math.round(n)));
-};
-
-const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-const strArr = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
 
 export async function POST(req: NextRequest) {
   let body: unknown;

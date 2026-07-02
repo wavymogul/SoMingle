@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { EventCard } from "./EventCard";
+import { AppleMusicButton } from "./AppleMusicButton";
 import { nearestCity } from "@/lib/geo";
 import { rankEvents, type VibeProfile } from "@/lib/vibe";
 import type { EventRecord } from "@/lib/types";
@@ -26,18 +27,24 @@ export function EventsBrowser() {
   const [locatedCity, setLocatedCity] = useState<string | null>(null);
   const [geoTried, setGeoTried] = useState(false);
 
-  // Spotify vibe state
+  // Music vibe state
   const [spotifyConfigured, setSpotifyConfigured] = useState(false);
+  const [appleConfigured, setAppleConfigured] = useState(false);
   const [profile, setProfile] = useState<VibeProfile | null>(null);
   const [vibeSort, setVibeSort] = useState(true);
   const [statusMsg, setStatusMsg] = useState("");
 
   const loadVibe = useCallback(async () => {
     try {
-      const res = await fetch("/api/spotify/me");
-      const data = await res.json();
-      setSpotifyConfigured(Boolean(data.configured));
-      setProfile(data.profile ?? null);
+      const [meRes, appleRes] = await Promise.all([
+        fetch("/api/spotify/me"),
+        fetch("/api/apple/token"),
+      ]);
+      const me = await meRes.json();
+      const apple = await appleRes.json();
+      setSpotifyConfigured(Boolean(me.configured));
+      setProfile(me.profile ?? null);
+      setAppleConfigured(Boolean(apple.configured));
     } catch {
       /* ignore */
     }
@@ -62,7 +69,7 @@ export function EventsBrowser() {
     window.history.replaceState({}, "", "/events");
   }, []);
 
-  async function disconnectSpotify() {
+  async function disconnectVibe() {
     await fetch("/api/spotify/logout", { method: "POST" });
     setProfile(null);
     setStatusMsg("");
@@ -178,7 +185,9 @@ export function EventsBrowser() {
                 <p className="text-xs text-white/55">
                   {profile.topGenres.length > 0
                     ? `Your top vibes: ${profile.topGenres.slice(0, 3).join(", ")}`
-                    : "Based on your Spotify listening"}
+                    : `Based on your ${
+                        profile.source === "apple" ? "Apple Music" : "Spotify"
+                      } listening`}
                 </p>
               </div>
             </div>
@@ -194,7 +203,7 @@ export function EventsBrowser() {
                 Top picks for you
               </button>
               <button
-                onClick={disconnectSpotify}
+                onClick={disconnectVibe}
                 className="rounded-full glass px-3 py-2 text-xs text-white/55 hover:text-white"
               >
                 Disconnect
@@ -202,29 +211,34 @@ export function EventsBrowser() {
             </div>
           </div>
         </div>
-      ) : spotifyConfigured ? (
-        <a
-          href="/api/spotify/login"
-          className="group mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl gradient-border glass-strong p-5 transition-colors hover:bg-white/[0.08]"
-        >
+      ) : spotifyConfigured || appleConfigured ? (
+        <div className="mb-6 flex flex-col gap-4 rounded-3xl gradient-border glass-strong p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-[#1DB954]">
-              <Music2 size={18} className="text-black" />
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-gradient">
+              <Music2 size={18} />
             </div>
             <div>
               <p className="font-display text-sm font-semibold">
-                Connect Spotify to find your vibe
+                Connect your music to find your vibe
               </p>
               <p className="text-xs text-white/55">
-                We&apos;ll match events to your actual taste in music. Opt-in,
-                never shared.
+                We&apos;ll match events to your actual taste. Opt-in, never
+                shared.
               </p>
             </div>
           </div>
-          <span className="rounded-full bg-brand-gradient px-4 py-2 text-xs font-semibold text-white transition-transform group-hover:scale-105">
-            Connect Spotify
-          </span>
-        </a>
+          <div className="flex flex-wrap items-center gap-2">
+            {spotifyConfigured && (
+              <a
+                href="/api/spotify/login"
+                className="inline-flex items-center gap-2 rounded-full bg-[#1DB954] px-4 py-2 text-xs font-semibold text-black transition-transform hover:scale-105"
+              >
+                <Music2 size={14} /> Spotify
+              </a>
+            )}
+            {appleConfigured && <AppleMusicButton onConnected={loadVibe} />}
+          </div>
+        </div>
       ) : (
         <div className="mb-6 flex items-center gap-3 rounded-3xl glass p-5">
           <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10">

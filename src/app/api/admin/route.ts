@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSurveys, getWaitlist } from "@/lib/db";
+import { isAdmin } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function authorized(req: NextRequest): boolean {
-  const expectedUser = process.env.ADMIN_USERNAME || "admin";
-  const expectedPass = process.env.ADMIN_PASSWORD || "Miller31!";
-  const url = new URL(req.url);
-  const user =
-    req.headers.get("x-admin-username") || url.searchParams.get("username");
-  const pass =
-    req.headers.get("x-admin-password") || url.searchParams.get("password");
-  return user === expectedUser && pass === expectedPass;
-}
-
 export async function GET(req: NextRequest) {
-  if (!authorized(req)) {
+  if (!isAdmin(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

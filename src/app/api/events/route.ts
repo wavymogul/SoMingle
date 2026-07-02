@@ -6,21 +6,12 @@ import {
   deleteEvent,
 } from "@/lib/db";
 import { SAMPLE_EVENTS } from "@/lib/events-data";
+import { isAdmin } from "@/lib/auth";
+import { str } from "@/lib/validate";
 import type { EventPayload } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function adminAuthorized(req: NextRequest): boolean {
-  const expectedUser = process.env.ADMIN_USERNAME || "admin";
-  const expectedPass = process.env.ADMIN_PASSWORD || "Miller31!";
-  return (
-    req.headers.get("x-admin-username") === expectedUser &&
-    req.headers.get("x-admin-password") === expectedPass
-  );
-}
-
-const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 function toPayload(b: Record<string, unknown>): EventPayload {
   return {
@@ -66,7 +57,7 @@ export async function GET(req: NextRequest) {
 
 // Admin: create an event.
 export async function POST(req: NextRequest) {
-  if (!adminAuthorized(req)) {
+  if (!isAdmin(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   let body: unknown;
@@ -91,7 +82,7 @@ export async function POST(req: NextRequest) {
 
 // Admin: update an existing event by id.
 export async function PUT(req: NextRequest) {
-  if (!adminAuthorized(req)) {
+  if (!isAdmin(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   let body: unknown;
@@ -122,7 +113,7 @@ export async function PUT(req: NextRequest) {
 
 // Admin: delete an event by id (?id= or JSON body { id }).
 export async function DELETE(req: NextRequest) {
-  if (!adminAuthorized(req)) {
+  if (!isAdmin(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const url = new URL(req.url);
