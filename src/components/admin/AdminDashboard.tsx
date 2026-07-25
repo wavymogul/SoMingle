@@ -447,8 +447,12 @@ function SurveyTable({ surveys }: { surveys: SurveyRecord[] }) {
             {surveys.map((s) => (
               <Fragment key={s.id}>
                 <tr className="border-b border-white/5 hover:bg-white/[0.03]">
-                  <td className="px-3 py-3 font-medium">{s.fullName}</td>
-                  <td className="px-3 py-3 text-white/70">{s.email}</td>
+                  <td className="px-3 py-3 font-medium">
+                    {s.fullName || (
+                      <span className="italic text-white/45">Anonymous</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-white/70">{s.email || "—"}</td>
                   <td className="px-3 py-3 text-white/70">{s.city || "—"}</td>
                   <td className="px-3 py-3 text-white/70">{s.status || "—"}</td>
                   <td className="px-3 py-3 text-white/70">

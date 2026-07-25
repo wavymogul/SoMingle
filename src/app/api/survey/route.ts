@@ -23,22 +23,19 @@ export async function POST(req: NextRequest) {
 
   const b = body as Record<string, unknown>;
 
-  if (!str(b.fullName)) {
+  // Responses are anonymous by default: name and email are optional. An email
+  // is only validated when one was actually provided (for early access).
+  const email = str(b.email).toLowerCase();
+  if (email && !isEmail(email)) {
     return NextResponse.json(
-      { error: "Your name is required." },
-      { status: 400 }
-    );
-  }
-  if (!isEmail(b.email)) {
-    return NextResponse.json(
-      { error: "A valid email is required." },
+      { error: "Please enter a valid email or leave it blank." },
       { status: 400 }
     );
   }
 
   const payload: SurveyPayload = {
     fullName: str(b.fullName),
-    email: str(b.email).toLowerCase(),
+    email,
     phone: str(b.phone) || undefined,
     instagram: str(b.instagram) || undefined,
     ageRange: str(b.ageRange),
