@@ -128,12 +128,13 @@ export function MultiStepSurvey() {
     [step]
   );
 
+  // Anonymous by default: nothing is required. An email is only validated
+  // when the respondent chose to enter one.
+  const emailOk = form.email.trim() === "" || isEmail(form.email);
   const stepValid = useMemo(() => {
-    if (step === 0) {
-      return form.fullName.trim().length > 1 && isEmail(form.email);
-    }
-    return true; // remaining steps are intentionally low-friction / optional
-  }, [step, form.fullName, form.email]);
+    if (step === 0) return emailOk;
+    return true;
+  }, [step, emailOk]);
 
   const next = () => {
     setError("");
@@ -145,6 +146,10 @@ export function MultiStepSurvey() {
   };
 
   async function submit() {
+    if (form.email.trim() && !isEmail(form.email)) {
+      setError("Please enter a valid email or leave it blank to stay anonymous.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -304,7 +309,7 @@ export function MultiStepSurvey() {
         </div>
         {step === 0 && !stepValid && (
           <p className="mt-3 text-right text-xs text-white/40">
-            Name and a valid email are required to continue.
+            Please enter a valid email — or leave it blank to stay anonymous.
           </p>
         )}
       </div>
@@ -320,15 +325,21 @@ type StepProps = {
 function StepAbout({ form, set }: StepProps) {
   return (
     <>
+      <p className="rounded-2xl bg-white/5 px-4 py-3 text-xs text-white/55">
+        🔒 <span className="font-semibold text-white/75">Anonymous by
+        default.</span>{" "}
+        Every question is optional — skip anything. Add your email only if you
+        want early access and updates.
+      </p>
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Full Name" required>
+        <Field label="Name" hint="(optional)">
           <TextInput
             value={form.fullName}
             onChange={(e) => set("fullName", e.target.value)}
-            placeholder="Jordan Rivera"
+            placeholder="Or stay anonymous"
           />
         </Field>
-        <Field label="Email Address" required>
+        <Field label="Email" hint="(optional — for early access & updates)">
           <TextInput
             type="email"
             value={form.email}
@@ -629,6 +640,19 @@ function StepFuture({ form, set }: StepProps) {
           columns={2}
         />
       </Field>
+      {form.wantsEarlyAccess === "Yes" && (
+        <Field
+          label="Where should we send your early access?"
+          hint="(optional — your answers stay anonymous without it)"
+        >
+          <TextInput
+            type="email"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+            placeholder="you@email.com"
+          />
+        </Field>
+      )}
       <Field label="Would you like to become:" hint="(select all that apply)">
         <CheckboxGroup
           options={ROLE_OPTIONS}

@@ -50,6 +50,10 @@ export function SurveyIntro() {
               </span>
             </div>
           </div>
+
+          <p className="mt-7 text-center text-sm text-white/60">
+            🔒 Anonymous by default — no name or email required.
+          </p>
         </div>
       </Reveal>
 
