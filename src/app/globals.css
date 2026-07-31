@@ -54,6 +54,14 @@
   .section-pad {
     @apply px-5 py-20 sm:px-8 md:py-28;
   }
+  /* Horizontal carousels: scrollable but without a visible scrollbar */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Custom range slider styling */

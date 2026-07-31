@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
+import { MobileTabBar } from "@/components/mobile/MobileTabBar";
 import "./globals.css";
 
 const inter = Inter({
@@ -67,7 +68,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${sora.variable} dark`}>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        {children}
+        <MobileTabBar />
+      </body>
     </html>
   );
 }
