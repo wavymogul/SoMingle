@@ -1,5 +1,6 @@
 import { Navbar } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
+import { ForYouFeed } from "@/components/foryou/ForYouFeed";
 import { HomeEvents } from "@/components/HomeEvents";
 import { ProblemSection } from "@/components/ProblemSection";
 import { VisionSection } from "@/components/VisionSection";
@@ -14,8 +15,12 @@ export default function HomePage() {
     <>
       <Navbar />
       <main>
-        <Hero />
-        <HomeEvents />
+        {/* Mobile gets the app-style For You feed; desktop keeps the hero. */}
+        <ForYouFeed />
+        <div className="hidden lg:block">
+          <Hero />
+          <HomeEvents />
+        </div>
         <ProblemSection />
         <VisionSection />
         <MissionSection />
